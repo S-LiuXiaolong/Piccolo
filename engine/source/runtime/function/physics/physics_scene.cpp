@@ -333,6 +333,7 @@ namespace Piccolo
         Collector collector;
         body_transformed_shape.CollectTransformedShapes(body_transformed_shape.GetWorldSpaceBounds(), collector);
 
+        // 收集所有leaf node的bounding boxes (?)
         for (const JPH::TransformedShape& ts : collector.mShapes)
         {
             const JPH::Shape* shape = ts.mShape;

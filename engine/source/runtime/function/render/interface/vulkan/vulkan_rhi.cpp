@@ -548,14 +548,18 @@ namespace Piccolo
     }
 
     // validation layers
+    // 请求所有可用的校验层
     bool VulkanRHI::checkValidationLayerSupport()
     {
+        // 调用vkEnumerateInstanceLayerProperties函数获取了所有可用的校验层列表
+        // 这一函数的用法和创建Vulkan实例时使用的vkEnumerateInstanceExtensionProperties函数相同
         uint32_t layerCount;
         vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
         std::vector<VkLayerProperties> availableLayers(layerCount);
         vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
+        // 检查是否所有m_validation_layers列表中的校验层都可以在availableLayers列表中找到
         for (const char* layerName : m_validation_layers)
         {
             bool layerFound = false;
@@ -578,6 +582,7 @@ namespace Piccolo
         return RHI_SUCCESS;
     }
 
+    // getRequiredExtensions函数根据是否启用校验层，返回所需的扩展列表
     std::vector<const char*> VulkanRHI::getRequiredExtensions()
     {
         uint32_t     glfwExtensionCount = 0;
@@ -598,7 +603,7 @@ namespace Piccolo
         return extensions;
     }
 
-    // debug callback
+    // debug callback 校验层消息回调
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT,
                                                         VkDebugUtilsMessageTypeFlagsEXT,
                                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -619,6 +624,7 @@ namespace Piccolo
         createInfo.pfnUserCallback = debugCallback;
     }
 
+    // 创建Vulkan实例(VkInstance)
     void VulkanRHI::createInstance()
     {
         // validation layer will be enabled in debug mode
@@ -648,6 +654,7 @@ namespace Piccolo
         instance_create_info.ppEnabledExtensionNames = extensions.data();
 
         VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo {};
+        // 在校验层启用时使用校验层
         if (m_enable_validation_Layers)
         {
             instance_create_info.enabledLayerCount   = static_cast<uint32_t>(m_validation_layers.size());
@@ -692,16 +699,19 @@ namespace Piccolo
 
     void VulkanRHI::createWindowSurface()
     {
+        // 使用GLFW库的glfwCreateWindowSurface函数来完成窗口表面创建（实际上类似于在窗口上蒙上一层画布）
+        // https://zhuanlan.zhihu.com/p/56795405
         if (glfwCreateWindowSurface(m_instance, m_window, nullptr, &m_surface) != VK_SUCCESS)
         {
             LOG_ERROR("glfwCreateWindowSurface failed!");
         }
     }
 
+    // 初始化物理设备（一般指GPU）
     void VulkanRHI::initializePhysicalDevice()
     {
         uint32_t physical_device_count;
-        vkEnumeratePhysicalDevices(m_instance, &physical_device_count, nullptr);
+        vkEnumeratePhysicalDevices(m_instance, &physical_device_count, nullptr); // 查询Vulkan支持的硬件
         if (physical_device_count == 0)
         {
             LOG_ERROR("enumerate physical devices failed!");
@@ -716,10 +726,10 @@ namespace Piccolo
             std::vector<std::pair<int, VkPhysicalDevice>> ranked_physical_devices;
             for (const auto& device : physical_devices)
             {
-                VkPhysicalDeviceProperties physical_device_properties;
-                vkGetPhysicalDeviceProperties(device, &physical_device_properties);
+                VkPhysicalDeviceProperties physical_device_properties; // 用于存放GPU设备信息的数据结构
+                vkGetPhysicalDeviceProperties(device, &physical_device_properties); // 通过GPU设备的句柄，查询GPU设备的名称，属性，功能等等
                 int score = 0;
-
+                // 根据deviceType对每个设备进行评分
                 if (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
                 {
                     score += 1000;
@@ -731,7 +741,7 @@ namespace Piccolo
 
                 ranked_physical_devices.push_back({score, device});
             }
-
+            // 排序找出最优，lambda表达式传入两个参数并比较大小（std::pair直接比较大小，先比较first，再比较second）
             std::sort(ranked_physical_devices.begin(),
                       ranked_physical_devices.end(),
                       [](const std::pair<int, VkPhysicalDevice>& p1, const std::pair<int, VkPhysicalDevice>& p2) {
@@ -3328,10 +3338,15 @@ namespace Piccolo
         }
     }
 
+    // Q: What is actually a Queue family in Vulkan?
+    // https://stackoverflow.com/questions/55272626/what-is-actually-a-queue-family-in-vulkan
     Piccolo::QueueFamilyIndices VulkanRHI::findQueueFamilies(VkPhysicalDevice physicalm_device) // for device and surface
     {
         QueueFamilyIndices indices;
         uint32_t           queue_family_count = 0;
+        // 使用vkGetPhysicalDeviceQueueFamilyProperties()来获取一个设备所支持的queue families和queues的细节
+        // vkGetPhysicalDeviceQueueFamilyProperties()所返回的pQueueFamilyProperties数组中的每个索引，都描述了该物理设备上的一个唯一的queue family。
+        // 这些索引将在创建queues时使用，并且它们与通过VkDeviceQueueCreateInfo传递给vkCreateDevice()的queueFamilyIndex直接对应
         vkGetPhysicalDeviceQueueFamilyProperties(physicalm_device, &queue_family_count, nullptr);
         std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
         vkGetPhysicalDeviceQueueFamilyProperties(physicalm_device, &queue_family_count, queue_families.data());
@@ -3351,10 +3366,12 @@ namespace Piccolo
 
 
             VkBool32 is_present_support = false;
+            // 查询是否支持窗口表面
             vkGetPhysicalDeviceSurfaceSupportKHR(physicalm_device,
                                                  i,
                                                  m_surface,
                                                  &is_present_support); // if support surface presentation
+            // 根据队列族中的队列数量和是否支持表现确定使用的表现队列族的索引
             if (is_present_support)
             {
                 indices.present_family = i;
@@ -3367,6 +3384,8 @@ namespace Piccolo
             i++;
         }
         return indices;
+        // 按照上面的方法最后选择使用的绘制指令队列族和表现队列族很有可能是同一个队列族
+        // 但为了统一操作，即使两者是同一个队列族，我们也按照它们是不同的队列族来对待
     }
 
     bool VulkanRHI::checkDeviceExtensionSupport(VkPhysicalDevice physicalm_device)
@@ -3386,6 +3405,7 @@ namespace Piccolo
         return required_extensions.empty();
     }
 
+    // 检测设备是否suitable
     bool VulkanRHI::isDeviceSuitable(VkPhysicalDevice physicalm_device)
     {
         auto queue_indices           = findQueueFamilies(physicalm_device);

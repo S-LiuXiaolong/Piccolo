@@ -28,6 +28,8 @@ namespace Piccolo
                 return false;
             }
 
+            // rdbuf() is a member function in C++ that is part of the input/output stream library.
+            // It is used to get the associated stream buffer of a stream (such as std::cout, std::cin, or a file stream)
             std::stringstream buffer;
             buffer << asset_json_file.rdbuf();
             std::string asset_json_text(buffer.str());

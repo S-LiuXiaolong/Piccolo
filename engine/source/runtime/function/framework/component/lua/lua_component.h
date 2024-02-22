@@ -12,7 +12,7 @@ namespace Piccolo
     public:
         LuaComponent() = default;
 
-        void postLoadResource(std::weak_ptr<GObject> parent_object) override;
+        void postLoadResource(std::weak_ptr<GObject> parent_object) override; // 反序列化生成对象时需要的函数
 
         void tick(float delta_time) override;
 
@@ -25,7 +25,7 @@ namespace Piccolo
         static void invoke(std::weak_ptr<GObject> game_object, const char* name);
     protected:
         sol::state m_lua_state;
-        META(Enable)
+        META(Enable) // 提醒parser需要序列化这个字段
         std::string m_lua_script;
     };
 } // namespace Piccolo

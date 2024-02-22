@@ -12,6 +12,8 @@
 #define PICCOLO_XSTR(s) PICCOLO_STR(s)
 #define PICCOLO_STR(s) #s
 
+// #define ENABLE_PHYSICS_DEBUG_RENDERER
+
 int main(int argc, char** argv)
 {
     std::filesystem::path executable_path(argv[0]);

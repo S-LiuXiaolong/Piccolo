@@ -1,3 +1,5 @@
+// Learn more about refletion: https://zhuanlan.zhihu.com/p/586485554
+
 #pragma once
 #include "runtime/core/meta/json.h"
 
@@ -22,11 +24,15 @@ namespace Piccolo
 //#define CLASS(class_name,...) class class_name:public Reflection::object
 #endif // __REFLECTION_PARSER__
 
+    // namespace TypeFieldReflectionOparator仅在REFLECTION_BODY和REFLECTION_TYPE中被使用
+    // REFLECTION_BODY在指定类中引入两个友元类
+    // （##）符号连接操作符，例如REFLECTION_BODY(Color)转换为 ...::TypeColorOperator;
 #define REFLECTION_BODY(class_name) \
     friend class Reflection::TypeFieldReflectionOparator::Type##class_name##Operator; \
     friend class Serializer;
     // public: virtual std::string getTypeName() override {return #class_name;}
 
+    // 以Color类为例，实质让Color在指定的两层namespace中，并让类名为TypeColorOperator
 #define REFLECTION_TYPE(class_name) \
     namespace Reflection \
     { \
@@ -34,15 +40,16 @@ namespace Piccolo
         { \
             class Type##class_name##Operator; \
         } \
-    };
+    }; // 反射类型
 
-#define REGISTER_FIELD_TO_MAP(name, value) TypeMetaRegisterinterface::registerToFieldMap(name, value);
-#define REGISTER_Method_TO_MAP(name, value) TypeMetaRegisterinterface::registerToMethodMap(name, value);
-#define REGISTER_BASE_CLASS_TO_MAP(name, value) TypeMetaRegisterinterface::registerToClassMap(name, value);
+#define REGISTER_FIELD_TO_MAP(name, value) TypeMetaRegisterinterface::registerToFieldMap(name, value); // 将name的类中的变量注册进reflection中的容器
+#define REGISTER_Method_TO_MAP(name, value) TypeMetaRegisterinterface::registerToMethodMap(name, value); // 注册成员函数
+#define REGISTER_BASE_CLASS_TO_MAP(name, value) TypeMetaRegisterinterface::registerToClassMap(name, value); // 注册基类
 #define REGISTER_ARRAY_TO_MAP(name, value) TypeMetaRegisterinterface::registerToArrayMap(name, value);
 #define UNREGISTER_ALL TypeMetaRegisterinterface::unregisterAll();
 
-#define PICCOLO_REFLECTION_NEW(name, ...) Reflection::ReflectionPtr(#name, new name(__VA_ARGS__));
+#define PICCOLO_REFLECTION_NEW(name, ...) Reflection::ReflectionPtr(#name, new name(__VA_ARGS__)); // 根据类名创建新的反射对象
+// 删除反射的实例化
 #define PICCOLO_REFLECTION_DELETE(value) \
     if (value) \
     { \
@@ -50,12 +57,14 @@ namespace Piccolo
         value.getPtrReference() = nullptr; \
     }
 #define PICCOLO_REFLECTION_DEEP_COPY(type, dst_ptr, src_ptr) \
-    *static_cast<type*>(dst_ptr) = *static_cast<type*>(src_ptr.getPtr());
+    *static_cast<type*>(dst_ptr) = *static_cast<type*>(src_ptr.getPtr()); // 深拷贝
 
+// 类型名和类型指针映射起来(栈上)
 #define TypeMetaDef(class_name, ptr) \
     Piccolo::Reflection::ReflectionInstance(Piccolo::Reflection::TypeMeta::newMetaFromName(#class_name), \
                                             (class_name*)ptr)
 
+// 创建新的类型名和类型指针映射(new,堆上)
 #define TypeMetaDefPtr(class_name, ptr) \
     new Piccolo::Reflection::ReflectionInstance(Piccolo::Reflection::TypeMeta::newMetaFromName(#class_name), \
                                                 (class_name*)ptr)
@@ -87,20 +96,21 @@ namespace Piccolo
 
     typedef std::function<void*(const Json&)>                           ConstructorWithJson;
     typedef std::function<Json(void*)>                                  WriteJsonByName;
-    typedef std::function<int(Reflection::ReflectionInstance*&, void*)> GetBaseClassReflectionInstanceListFunc;
+    typedef std::function<int(Reflection::ReflectionInstance*&, void*)> GetBaseClassReflectionInstanceListFunc; // 获取反射实例列表函数指针
 
     typedef std::tuple<SetFuncion, GetFuncion, GetNameFuncion, GetNameFuncion, GetNameFuncion, GetBoolFunc>
                                                        FieldFunctionTuple;
     typedef std::tuple<GetNameFuncion, InvokeFunction> MethodFunctionTuple;
-    typedef std::tuple<GetBaseClassReflectionInstanceListFunc, ConstructorWithJson, WriteJsonByName> ClassFunctionTuple;
-    typedef std::tuple<SetArrayFunc, GetArrayFunc, GetSizeFunc, GetNameFuncion, GetNameFuncion>      ArrayFunctionTuple;
+    typedef std::tuple<GetBaseClassReflectionInstanceListFunc, ConstructorWithJson, WriteJsonByName> ClassFunctionTuple; // 类中函数的函数指针
+    typedef std::tuple<SetArrayFunc, GetArrayFunc, GetSizeFunc, GetNameFuncion, GetNameFuncion>      ArrayFunctionTuple; // 数组函数指针
 
     namespace Reflection
     {
         class TypeMetaRegisterinterface
         {
         public:
-            static void registerToClassMap(const char* name, ClassFunctionTuple* value);
+            // register函数，参数为类名（字符串形式）和对应的行为（std::function组成的tuple）
+            static void registerToClassMap(const char* name, ClassFunctionTuple* value); // 例如registerToClassMap将对应关系存入m_class_map
             static void registerToFieldMap(const char* name, FieldFunctionTuple* value);
 
             static void registerToMethodMap(const char* name, MethodFunctionTuple* value);
@@ -108,6 +118,7 @@ namespace Piccolo
 
             static void unregisterAll();
         };
+        // 储存一个类的所有字段的元信息
         class TypeMeta
         {
             friend class FieldAccessor;
@@ -143,9 +154,9 @@ namespace Piccolo
             TypeMeta(std::string type_name);
 
         private:
-            std::vector<FieldAccessor, std::allocator<FieldAccessor>>   m_fields;
-            std::vector<MethodAccessor, std::allocator<MethodAccessor>> m_methods;
-            std::string                                                 m_type_name;
+            std::vector<FieldAccessor>   m_fields;
+            std::vector<MethodAccessor>  m_methods;
+            std::string                  m_type_name;
 
             bool m_is_valid;
         };
@@ -232,6 +243,7 @@ namespace Piccolo
             const char*         m_element_type_name;
         };
 
+        // 用于创造一个能反射的类的实例
         class ReflectionInstance
         {
         public:
@@ -243,6 +255,9 @@ namespace Piccolo
             ReflectionInstance& operator=(ReflectionInstance&& dest);
 
         public:
+            // 以Vector2为例
+            // 这个类拥有Vector2的元信息与一个实例，这个实例是个指针
+            // 这样只需要更换指针指向对象我们就可以指向不同的 Vector2 实例，从而对不同 Vector2 实例get_x
             TypeMeta m_meta;
             void*    m_instance;
         };

@@ -12,6 +12,9 @@ namespace Piccolo
     CLASS(Vector2, Fields)
     {
         REFLECTION_BODY(Vector2);
+        // 拓展到：
+        // friend class Reflection::TypeFieldReflectionOparator::TypeVector2Operator;
+        // friend class Serializer;
 
     public:
         float x {0.f}, y {0.f};

@@ -52,19 +52,19 @@ namespace Piccolo
 
         // reflection
         auto                       meta = TypeMetaDef(Test2, &test2_out);
-        Reflection::FieldAccessor* fields;
+        Reflection::FieldAccessor* fields; // 一个accessor的数组
         int                        fields_count = meta.m_meta.getFieldsList(fields);
         for (int i = 0; i < fields_count; ++i)
         {
-            auto filed_accesser = fields[i];
-            std::cout << filed_accesser.getFieldTypeName() << " " << filed_accesser.getFieldName() << " "
-                      << (char*)filed_accesser.get(meta.m_instance) << std::endl;
-            if (filed_accesser.isArrayType())
+            auto field_accessor = fields[i];
+            std::cout << field_accessor.getFieldTypeName() << " " << field_accessor.getFieldName() << " "
+                      << (char*)field_accessor.get(meta.m_instance) << std::endl;
+            if (field_accessor.isArrayType())
             {
                 Reflection::ArrayAccessor array_accesser;
-                if (Reflection::TypeMeta::newArrayAccessorFromName(filed_accesser.getFieldTypeName(), array_accesser))
+                if (Reflection::TypeMeta::newArrayAccessorFromName(field_accessor.getFieldTypeName(), array_accesser))
                 {
-                    void* field_instance = filed_accesser.get(meta.m_instance);
+                    void* field_instance = field_accessor.get(meta.m_instance);
                     int   count          = array_accesser.getSize(field_instance);
                     auto  typeMetaItem   = Reflection::TypeMeta::newMetaFromName(array_accesser.getElementTypeName());
                     for (int index = 0; index < count; ++index)

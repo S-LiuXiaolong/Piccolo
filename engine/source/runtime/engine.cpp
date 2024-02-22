@@ -19,7 +19,7 @@ namespace Piccolo
 
     void PiccoloEngine::startEngine(const std::string& config_file_path)
     {
-        Reflection::TypeMetaRegister::metaRegister();
+        Reflection::TypeMetaRegister::metaRegister(); // 利用生成的all_reflection.h注册所有需要注册的类
 
         g_runtime_global_context.startSystems(config_file_path);
 

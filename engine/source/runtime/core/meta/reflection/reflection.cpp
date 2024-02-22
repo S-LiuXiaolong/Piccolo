@@ -36,6 +36,7 @@ namespace Piccolo
 
         void TypeMetaRegisterinterface::registerToClassMap(const char* name, ClassFunctionTuple* value)
         {
+            // 如果在m_class_map中没有找到注册的对应函数，则创建一个pair并插入map
             if (m_class_map.find(name) == m_class_map.end())
             {
                 m_class_map.insert(std::make_pair(name, value));
@@ -71,21 +72,23 @@ namespace Piccolo
             m_fields.clear();
             m_methods.clear();
 
-            auto fileds_iter = m_field_map.equal_range(type_name);
-            while (fileds_iter.first != fileds_iter.second)
+            // equal_range()函数主要是求在multimap中有多少个重复的元素
+            // equal_range返回值是两个迭Map类型的迭代器(返回pair)，分别指向该元素的起始位置和该元素结束位置的下一个元素的位置
+            auto fields_iter = m_field_map.equal_range(type_name);
+            while (fields_iter.first != fields_iter.second)
             {
-                FieldAccessor f_field(fileds_iter.first->second);
-                m_fields.emplace_back(f_field);
+                FieldAccessor f_field(fields_iter.first->second); // 调用Accessor的构造函数，且由于TypeMeta是FieldAccessor的友元类，所以可以直接调用private的含参构造函数
+                m_fields.emplace_back(f_field); // 通过emplace_back来取消拷贝与析构f_field的这一步，直接原地构造后添加到vector
                 m_is_valid = true;
 
-                ++fileds_iter.first;
+                ++fields_iter.first;
             }
 
             auto methods_iter = m_method_map.equal_range(type_name);
             while (methods_iter.first != methods_iter.second)
             {
                 MethodAccessor f_method(methods_iter.first->second);
-                m_methods.emplace_back(f_method);
+                m_methods.emplace_back(f_method); 
                 m_is_valid = true;
 
                 ++methods_iter.first;
@@ -226,10 +229,11 @@ namespace Piccolo
                 return;
             }
 
-            m_field_type_name = (std::get<4>(*m_functions))();
-            m_field_name      = (std::get<3>(*m_functions))();
+            m_field_name      = (std::get<3>(*m_functions))(); // 从生成的reflection文件中获取成员变量名称
+            m_field_type_name = (std::get<4>(*m_functions))(); // 获取成员变量类型
         }
 
+        // set和get函数
         void* FieldAccessor::get(void* instance)
         {
             // todo: should check validation
@@ -242,6 +246,7 @@ namespace Piccolo
             (std::get<0>(*m_functions))(instance, value);
         }
 
+        // 获取类名
         TypeMeta FieldAccessor::getOwnerTypeMeta()
         {
             // todo: should check validation

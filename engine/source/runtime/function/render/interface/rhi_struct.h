@@ -1118,6 +1118,8 @@ namespace Piccolo
 
     struct QueueFamilyIndices
     {
+        // std::optional<T>用于明确表达返回值可能存在或不存在的情况，避免了错误处理代码的复杂性。
+        // 可用has_value()和value()函数来检查返回值是否存在和获取返回值
         std::optional<uint32_t> graphics_family;
         std::optional<uint32_t> present_family;
         std::optional<uint32_t> m_compute_family;

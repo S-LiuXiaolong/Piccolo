@@ -192,9 +192,10 @@ namespace Piccolo
 
         QueueFamilyIndices m_queue_indices;
 
-        GLFWwindow*        m_window {nullptr};
-        VkInstance         m_instance {nullptr};
-        VkSurfaceKHR       m_surface {nullptr};
+        GLFWwindow*        m_window {nullptr}; // GLFW窗体指针
+        VkInstance         m_instance {nullptr}; // 创建的Vulkan实例
+        // VK_KHR_surface扩展通过VkSurfaceKHR对象抽象出可供Vulkan渲染的表面
+        VkSurfaceKHR       m_surface {nullptr}; 
         VkPhysicalDevice   m_physical_device {nullptr};
         VkDevice           m_device {nullptr};
         VkQueue            m_present_queue {nullptr};
