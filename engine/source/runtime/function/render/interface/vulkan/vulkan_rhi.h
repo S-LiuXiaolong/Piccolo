@@ -196,10 +196,14 @@ namespace Piccolo
         VkInstance         m_instance {nullptr}; // 创建的Vulkan实例
         // VK_KHR_surface扩展通过VkSurfaceKHR对象抽象出可供Vulkan渲染的表面
         VkSurfaceKHR       m_surface {nullptr}; 
-        VkPhysicalDevice   m_physical_device {nullptr};
-        VkDevice           m_device {nullptr};
+        VkPhysicalDevice   m_physical_device {nullptr}; // vulkan物理设备
+        VkDevice           m_device {nullptr}; // vulkan逻辑设备
         VkQueue            m_present_queue {nullptr};
 
+        // Vulkan没有默认帧缓冲的概念，它需要一个能够缓冲渲染操作的组件，在Vulkan中，这一组件就是交换链
+        // Vulkan的交换链必须显式地创建，不存在默认的交换链。交换链本质上一个包含了若干等待呈现的图像的队列
+        // 应用程序从交换链获取一张图像，然后在图像上进行渲染操作，完成后，将图像返回到交换链的队列中
+        // 交换链的队列的工作方式和它呈现图像到表面的条件依赖于交换链的设置，但通常来说，交换链被用来同步图像呈现和屏幕刷新。
         VkSwapchainKHR           m_swapchain {nullptr};
         std::vector<VkImage>     m_swapchain_images;
 
@@ -249,9 +253,11 @@ namespace Piccolo
         uint32_t m_current_swapchain_image_index;
 
     private:
+        // LunarG的Vulkan SDK允许我们通过VK_LAYER_KHRONOS_validation来隐式地开启所有可用的校验层
         const std::vector<char const*> m_validation_layers {"VK_LAYER_KHRONOS_validation"};
         uint32_t                       m_vulkan_api_version {VK_API_VERSION_1_0};
 
+        // 定义所需的的设备扩展列表，用于检测VK_KHR_swapchain设备扩展是否被设备支持
         std::vector<char const*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
         // default sampler cache

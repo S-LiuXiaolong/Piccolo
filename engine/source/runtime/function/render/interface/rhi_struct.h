@@ -1120,8 +1120,8 @@ namespace Piccolo
     {
         // std::optional<T>用于明确表达返回值可能存在或不存在的情况，避免了错误处理代码的复杂性。
         // 可用has_value()和value()函数来检查返回值是否存在和获取返回值
-        std::optional<uint32_t> graphics_family;
-        std::optional<uint32_t> present_family;
+        std::optional<uint32_t> graphics_family; // 支持绘制指令的队列族和支持表现的队列族并不一定重叠
+        std::optional<uint32_t> present_family; // 支持表现的队列组（可以在创建的表面上显示图像）
         std::optional<uint32_t> m_compute_family;
 
         bool isComplete() { return graphics_family.has_value() && present_family.has_value() && m_compute_family.has_value();; }

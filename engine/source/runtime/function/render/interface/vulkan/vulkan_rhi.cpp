@@ -126,11 +126,23 @@ namespace Piccolo
 #else
 #error Unknown Compiler
 #endif
+        // 在Vulkan当中的画一个三角形流程可以分为如下:
 
+        // 创建一个 VkInstance 
+        // 选择支持的硬件设备（VkPhysicalDevice）
+        // 创建用于Draw和Presentation的VkDevice 和 VkQueue
+        // 创建窗口(window)、窗口表面(window surface) 和交换链(Swap Chain)
+        // 将Swap Chain Image 包装到 VkImageView
+        // 创建一个指定Render Target和用途的RenderPass
+        // 为RenderPass创建FrameBuffer
+        // 设置PipeLine
+        // 为每个可能的Swap Chain Image分配并记录带有绘制命令的Command Buffer
+        // 通过从Swap Chain获取图像在上面绘制，提交正确的Commander Buffer，并将绘制完的图像返回到Swap Chain去显示。
         createInstance();
 
         initializeDebugMessenger();
 
+        // 由于窗口表面对物理设备的选择有一定影响，它的创建只能在Vulkan实例创建之后、初始化物理设备之前进行
         createWindowSurface();
 
         initializePhysicalDevice();
@@ -583,6 +595,7 @@ namespace Piccolo
     }
 
     // getRequiredExtensions函数根据是否启用校验层，返回所需的扩展列表
+    // 这里主要是检查直接调用glfw的函数获取和窗口系统交互的扩展
     std::vector<const char*> VulkanRHI::getRequiredExtensions()
     {
         uint32_t     glfwExtensionCount = 0;
@@ -591,6 +604,8 @@ namespace Piccolo
 
         std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
+        // 代码中使用了一个VK_EXT_DEBUG_UTILS_EXTENSION_NAME，它等价于VK_EXT_debug_utils
+        // 使用该扩展设置回调函数来接受调试信息
         if (m_enable_validation_Layers || m_enable_debug_utils_label)
         {
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -604,6 +619,8 @@ namespace Piccolo
     }
 
     // debug callback 校验层消息回调
+    // 以vkDebugUtilsMessengerCallbackEXT::pfnUserCallback为原型添加一个叫做debugCallback的静态函数。这一函数使用VKAPI_ATTR和VKAPI_CALL定义，确保它可以被Vulkan库调用
+    // 参数列表可见https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/PFN_vkDebugUtilsMessengerCallbackEXT.html
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT,
                                                         VkDebugUtilsMessageTypeFlagsEXT,
                                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -635,8 +652,12 @@ namespace Piccolo
 
         m_vulkan_api_version = VK_API_VERSION_1_0;
 
-        // app info
+        // app info 
+        // 填写应用程序信息，这些信息的填写不是必须的，但填写的信息可能会作为驱动程序的优化依据，让驱动程序进行一些特殊的优化
+        // Vulkan的很多结构体需要我们显式地在sType成员变量中指定结构体的类型
+        // 此外，许多Vulkan的结构体还有一个pNext成员变量，用来指向未来可能扩展的参数信息，现在，我们并没有使用它，默认设置为nullptr
         VkApplicationInfo appInfo {};
+        // sType: https://stackoverflow.com/questions/36347236/vulkan-what-is-the-point-of-stype-in-vkcreateinfo-structs
         appInfo.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName   = "piccolo_renderer";
         appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -649,6 +670,7 @@ namespace Piccolo
         instance_create_info.sType            = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instance_create_info.pApplicationInfo = &appInfo; // the appInfo is stored here
 
+        // 获取需要的全局扩展，比如一个和窗口系统交互的扩展(glfw)
         auto extensions                              = getRequiredExtensions();
         instance_create_info.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
         instance_create_info.ppEnabledExtensionNames = extensions.data();
@@ -660,8 +682,10 @@ namespace Piccolo
             instance_create_info.enabledLayerCount   = static_cast<uint32_t>(m_validation_layers.size());
             instance_create_info.ppEnabledLayerNames = m_validation_layers.data();
 
-            populateDebugMessengerCreateInfo(debugCreateInfo);
-            instance_create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+            // 向VkDebugUtilsMessengerCreateInfoEXT结构体中填入必要信息
+            // 不过这里好像没必要吧，initializeDebugMessenger()函数里面已经完全实现了这一步了，pNext一般用于扩展
+            // populateDebugMessengerCreateInfo(debugCreateInfo);
+            // instance_create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
         }
         else
         {
@@ -670,6 +694,10 @@ namespace Piccolo
         }
 
         // create m_vulkan_context._instance
+        // 创建Vulkan对象的函数参数的一般形式就是：
+        // 1、一个包含了创建信息的结构体指针
+        // 2、一个自定义的分配器回调函数，这里没有使用自定义的分配器，总是将它设置为nullptr
+        // 3、一个指向新对象句柄存储位置的指针
         if (vkCreateInstance(&instance_create_info, nullptr, &m_instance) != VK_SUCCESS)
         {
             LOG_ERROR("vk create instance");
@@ -682,6 +710,7 @@ namespace Piccolo
         {
             VkDebugUtilsMessengerCreateInfoEXT createInfo;
             populateDebugMessengerCreateInfo(createInfo);
+            // 将createInfo作为一个参数调用vkCreateDebugUtilsMessengerEXT函数来创建VkDebugUtilsMessengerEXT对象
             if (VK_SUCCESS != createDebugUtilsMessengerEXT(m_instance, &createInfo, nullptr, &m_debug_messenger))
             {
                 LOG_ERROR("failed to set up debug messenger!");
@@ -705,6 +734,7 @@ namespace Piccolo
         {
             LOG_ERROR("glfwCreateWindowSurface failed!");
         }
+
     }
 
     // 初始化物理设备（一般指GPU）
@@ -766,10 +796,14 @@ namespace Piccolo
 
     // logical device (m_vulkan_context._device : graphic queue, present queue,
     // feature:samplerAnisotropy)
+    // 选择物理设备后，我们还需要一个逻辑设备来作为和物理设备交互的接口
+    // 逻辑设备的创建过程类似于我们之前描述的Vulkan实例的创建过程
+    // 我们还需要指定使用的队列所属的队列族，对于同一个物理设备，我们可以根据需求的不同，创建多个逻辑设备
     void VulkanRHI::createLogicalDevice()
     {
         m_queue_indices = findQueueFamilies(m_physical_device);
-
+        
+        // 需要多个VkDeviceQueueCreateInfo结构体来创建所有使用的队列族，一个优雅的处理方式是使用STL的集合创建每一个不同的队列族
         std::vector<VkDeviceQueueCreateInfo> queue_create_infos; // all queues that need to be created
         std::set<uint32_t>                   queue_families = {m_queue_indices.graphics_family.value(),
                                              m_queue_indices.present_family.value(),
@@ -779,6 +813,8 @@ namespace Piccolo
         for (uint32_t queue_family : queue_families) // for every queue family
         {
             // queue create info
+            // 对于每个队列族，驱动程序只允许创建很少数量的队列，但实际上，对于每一个队列族
+            // 我们很少需要一个以上的队列。我们可以在多个线程创建指令缓冲，然后在主线程一次将它们全部提交，降低调用开销。
             VkDeviceQueueCreateInfo queue_create_info {};
             queue_create_info.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
             queue_create_info.queueFamilyIndex = queue_family;
@@ -787,7 +823,7 @@ namespace Piccolo
             queue_create_infos.push_back(queue_create_info);
         }
 
-        // physical device features
+        // physical device features 指定应用程序使用的设备特性
         VkPhysicalDeviceFeatures physical_device_features = {};
 
         physical_device_features.samplerAnisotropy = VK_TRUE;
@@ -805,15 +841,20 @@ namespace Piccolo
         }
 
         // device create info
+        // 将VkDeviceCreateInfo结构体的pQueueCreateInfos指针指向queue_create_infos数据的地址
+        // pEnabledFeatures指针指向physical_device_features的地址
         VkDeviceCreateInfo device_create_info {};
         device_create_info.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_create_info.pQueueCreateInfos       = queue_create_infos.data();
         device_create_info.queueCreateInfoCount    = static_cast<uint32_t>(queue_create_infos.size());
         device_create_info.pEnabledFeatures        = &physical_device_features;
-        device_create_info.enabledExtensionCount   = static_cast<uint32_t>(m_device_extensions.size());
-        device_create_info.ppEnabledExtensionNames = m_device_extensions.data();
+        device_create_info.enabledExtensionCount   = static_cast<uint32_t>(m_device_extensions.size()); //
+        device_create_info.ppEnabledExtensionNames = m_device_extensions.data(); // 启用extensions（这里是交换链扩展）
         device_create_info.enabledLayerCount       = 0;
 
+        // 调用vkCreateDevice函数创建逻辑设备
+        // vkCreateDevice函数的参数包括我们创建的逻辑设备进行交互的物理设备对象，我们刚刚在结构体中指定的需要使用的队列信息，
+        // 可选的分配器回调，以及用来存储返回的逻辑设备对象的内存地址
         if (vkCreateDevice(m_physical_device, &device_create_info, nullptr, &m_device) != VK_SUCCESS)
         {
             LOG_ERROR("vk create device");
@@ -3069,7 +3110,10 @@ namespace Piccolo
         // choose the best or fitting extent
         VkExtent2D chosen_extent = chooseSwapchainExtentFromDetails(swapchain_support_details.capabilities);
 
+        // 使用交换链支持的最小图像个数+1数量的图像来实现三重缓冲
+        // 三重缓冲：https://zhuanlan.zhihu.com/p/599432460
         uint32_t image_count = swapchain_support_details.capabilities.minImageCount + 1;
+        // maxImageCount的值为0表明，只要内存可以满足，我们可以使用任意数量的图像
         if (swapchain_support_details.capabilities.maxImageCount > 0 &&
             image_count > swapchain_support_details.capabilities.maxImageCount)
         {
@@ -3084,34 +3128,48 @@ namespace Piccolo
         createInfo.imageFormat      = chosen_surface_format.format;
         createInfo.imageColorSpace  = chosen_surface_format.colorSpace;
         createInfo.imageExtent      = chosen_extent;
+        // imageArrayLayers成员变量用于指定每个图像所包含的层次，通常值为1。但对于VR相关的应用程序来说，会使用更多的层次
         createInfo.imageArrayLayers = 1;
+        // imageUsage成员变量用于指定我们将在图像上进行怎样的操作。我们在图像上进行绘制操作，也就是将图像作为一个color attatchment来使用
+        // 如果需要对图像进行后期处理之类的操作，可以使用VK_IMAGE_USAGE_TRANSFER_DST_BIT作为imageUsage成员变量的值，让交换链图像可以作为传输的目的图像
         createInfo.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
         uint32_t queueFamilyIndices[] = {m_queue_indices.graphics_family.value(), m_queue_indices.present_family.value()};
 
+        // 通过图形队列在交换链图像上进行绘制操作，然后将图像提交给呈现队列来显示，有两种控制在多个队列访问图像的方式
         if (m_queue_indices.graphics_family != m_queue_indices.present_family)
         {
+            // VK_SHARING_MODE_CONCURRENT：图像可以在多个队列族间使用，不需要显式地改变图像所有权
+            // 如果图形和呈现不是同一个队列族，我们使用concurrent模式来避免处理图像所有权问题。
+            // concurrent模式需要我们使用queueFamilyIndexCount和pQueueFamilyIndices来指定共享所有权的队列族。
             createInfo.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
             createInfo.queueFamilyIndexCount = 2;
             createInfo.pQueueFamilyIndices   = queueFamilyIndices;
         }
         else
         {
+            // VK_SHARING_MODE_EXCLUSIVE：一张图像同一时间只能被一个队列族所拥有，在另一队列族使用它之前，必须显式地改变图像所有权。这一模式下性能表现最佳
             createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         }
 
+        // preTransform指定是否为交换链中的图像指定一个固定的变换操作，比如顺时针旋转90度或是水平翻转。如果不需要进行任何变换操作，指定使用currentTransform变换即可
         createInfo.preTransform   = swapchain_support_details.capabilities.currentTransform;
-        createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        // compositeAlpha成员变量用于指定alpha通道是否被用来和窗口系统中的其它窗口进行混合操作
+        createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // 设置忽略alpha通道
         createInfo.presentMode    = chosen_presentMode;
+        // clipped成员变量被设置为VK_TRUE表示我们不关心被窗口系统中的其它窗口遮挡的像素的颜色，
+        // 这允许Vulkan采取一定的优化措施，但如果我们回读窗口的像素值就可能出现问题
         createInfo.clipped        = VK_TRUE;
 
         createInfo.oldSwapchain = VK_NULL_HANDLE;
 
+        // 调用vkCreateSwapchainKHR函数创建交换链
         if (vkCreateSwapchainKHR(m_device, &createInfo, nullptr, &m_swapchain) != VK_SUCCESS)
         {
             LOG_ERROR("vk create swapchain khr");
         }
 
+        // 获取交换链图像的图像句柄，之后利用这些图像句柄进行渲染操作
         vkGetSwapchainImagesKHR(m_device, m_swapchain, &image_count, nullptr);
         m_swapchain_images.resize(image_count);
         vkGetSwapchainImagesKHR(m_device, m_swapchain, &image_count, m_swapchain_images.data());
@@ -3314,6 +3372,7 @@ namespace Piccolo
                                                      const VkAllocationCallbacks*              pAllocator,
                                                      VkDebugUtilsMessengerEXT*                 pDebugMessenger)
     {
+        // 由于vkCreateDebugUtilsMessengerEXT函数是一个扩展函数，不会被Vulkan库自动加载，所以需要我们自己使用vkGetInstanceProcAddr函数来加载它
         auto func =
             (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
         if (func != nullptr)
@@ -3340,6 +3399,11 @@ namespace Piccolo
 
     // Q: What is actually a Queue family in Vulkan?
     // https://stackoverflow.com/questions/55272626/what-is-actually-a-queue-family-in-vulkan
+    // Vulkan的几乎所有操作，从绘制到加载纹理都需要将操作指令提交给一个队列，然后才能执行
+    // Vulkan有多种不同类型的队列，它们属于不同的队列族，每个队列族的队列只允许执行特定的一部分指令
+    // 比如，可能存在只允许执行计算相关指令的队列族和只允许执行内存传输相关指令的队列族
+    // 我们需要检测设备支持的队列族，以及它们中哪些支持我们需要使用的指令
+    // 为了完成这一目的，我们添加了一个叫做findQueueFamilies的函数，这一函数会查找出满足我们需求的队列族
     Piccolo::QueueFamilyIndices VulkanRHI::findQueueFamilies(VkPhysicalDevice physicalm_device) // for device and surface
     {
         QueueFamilyIndices indices;
@@ -3388,6 +3452,8 @@ namespace Piccolo
         // 但为了统一操作，即使两者是同一个队列族，我们也按照它们是不同的队列族来对待
     }
 
+    // 在这里，我们将所需的扩展保存在一个集合中，然后枚举所有可用的扩展，将集合中的扩展剔除
+    // 最后，如果这个集合中的元素为0，说明我们所需的扩展全部都被满足
     bool VulkanRHI::checkDeviceExtensionSupport(VkPhysicalDevice physicalm_device)
     {
         uint32_t extension_count;
@@ -3396,6 +3462,7 @@ namespace Piccolo
         std::vector<VkExtensionProperties> available_extensions(extension_count);
         vkEnumerateDeviceExtensionProperties(physicalm_device, nullptr, &extension_count, available_extensions.data());
 
+        // 注意m_device_extensions只包含了VK_KHR_SWAPCHAIN_EXTENSION_NAME，即用于检测swapchain是否支持
         std::set<std::string> required_extensions(m_device_extensions.begin(), m_device_extensions.end());
         for (const auto& extension : available_extensions)
         {
@@ -3428,15 +3495,23 @@ namespace Piccolo
 
         return true;
     }
-
+    
+    // 查询交换链支持细节
+    // 
+    // 有三种最基本的属性，需要我们检查：
+    // 基础表面特性(交换链的最小 / 最大图像数量，最小 / 最大图像宽度、高度)
+    // 表面格式(像素格式，颜色空间)
+    // 可用的呈现模式
     Piccolo::SwapChainSupportDetails VulkanRHI::querySwapChainSupport(VkPhysicalDevice physicalm_device)
     {
         SwapChainSupportDetails details_result;
 
-        // capabilities
+        // capabilities 基础表面特性
+        // 这一函数以VkPhysicalDevice对象和VkSurfaceKHR作为参数来查询表面特性。与交换链信息查询有关的函数都需要这两个参数，它们是交换链的核心组件。
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalm_device, m_surface, &details_result.capabilities);
 
         // formats
+        // 查询表面支持的格式。这一查询结果是一个结构体列表，所以它的查询首先查询格式数量，然后分配数组空间查询具体信息
         uint32_t format_count;
         vkGetPhysicalDeviceSurfaceFormatsKHR(physicalm_device, m_surface, &format_count, nullptr);
         if (format_count != 0)
@@ -3446,7 +3521,7 @@ namespace Piccolo
                 physicalm_device, m_surface, &format_count, details_result.formats.data());
         }
 
-        // present modes
+        // present modes 呈现方式
         uint32_t presentmode_count;
         vkGetPhysicalDeviceSurfacePresentModesKHR(physicalm_device, m_surface, &presentmode_count, nullptr);
         if (presentmode_count != 0)
@@ -3489,6 +3564,7 @@ namespace Piccolo
         return VkFormat();
     }
 
+    // 用于选择合适的表面格式
     VkSurfaceFormatKHR
     VulkanRHI::chooseSwapchainSurfaceFormatFromDetails(const std::vector<VkSurfaceFormatKHR>& available_surface_formats)
     {
@@ -3505,6 +3581,7 @@ namespace Piccolo
         return available_surface_formats[0];
     }
 
+    // 呈现模式可以说是交换链中最重要的设置。它决定了什么条件下图像才会显示到屏幕。Vulkan提供了四种可用的呈现模式
     VkPresentModeKHR
     VulkanRHI::chooseSwapchainPresentModeFromDetails(const std::vector<VkPresentModeKHR>& available_present_modes)
     {
@@ -3512,13 +3589,18 @@ namespace Piccolo
         {
             if (VK_PRESENT_MODE_MAILBOX_KHR == present_mode)
             {
+                // 这一模式是VK_PRESENT_MODE_FIFO_KHR的变种。它不会在交换链的队列满时阻塞应用程序，
+                // 队列中的图像会被直接替换为应用程序新提交的图像。这一模式可以用来实现三倍缓冲，避免撕裂现象的同时减小了延迟问题。
                 return VK_PRESENT_MODE_MAILBOX_KHR;
             }
         }
 
+        // 交换链变成一个先进先出的队列，每次从队列头部取出一张图像进行显示，应用程序渲染的图像提交给交换链后，
+        // 会被放在队列尾部。当队列为满时，应用程序需要进行等待。这一模式非常类似现在常用的垂直同步。刷新显示的时刻也被叫做垂直回扫。
         return VK_PRESENT_MODE_FIFO_KHR;
     }
 
+    // 交换范围是交换链中图像的分辨率，它几乎总是和我们要显示图像的窗口的分辨率相同。VkSurfaceCapabilitiesKHR结构体定义了可用的分辨率范围
     VkExtent2D VulkanRHI::chooseSwapchainExtentFromDetails(const VkSurfaceCapabilitiesKHR& capabilities)
     {
         if (capabilities.currentExtent.width != UINT32_MAX)
