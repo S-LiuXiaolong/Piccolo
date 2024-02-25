@@ -173,7 +173,8 @@ namespace Piccolo
         RHIQueue* m_compute_queue{ nullptr };
 
         RHIFormat m_swapchain_image_format{ RHI_FORMAT_UNDEFINED };
-        std::vector<RHIImageView*> m_swapchain_imageviews;
+        // 对于Vulkan API，有VulkanImageView继承自RHIImageView
+        std::vector<RHIImageView*> m_swapchain_imageviews; // 用于存储图像视图的成员变量
         RHIExtent2D m_swapchain_extent;
         RHIViewport m_viewport;
         RHIRect2D m_scissor;

@@ -33,6 +33,10 @@ namespace Piccolo
 
     VkShaderModule VulkanUtil::createShaderModule(VkDevice device, const std::vector<unsigned char>& shader_code)
     {
+        // 创建着色器模块非常简单，只需要通过VkShaderModuleCreateInfo结构体指定存储字节码的数组和数组长度即可。
+        // 但需要注意一点，我们需要先将存储字节码的数组指针转换为const uint32_t*变量类型，来匹配结构体中的字节码指针的变量类型。
+        // 这里，我们使用C++的reinterpret_cast完成变量类型转换。此外，我们指定的指针指向的地址应该符合uint32_t变量类型的内存对齐方式。
+        // 我们这里使用的std::vector，它的默认分配器分配的内存的地址符合这一要求
         VkShaderModuleCreateInfo shader_module_create_info {};
         shader_module_create_info.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         shader_module_create_info.codeSize = shader_code.size();
@@ -245,16 +249,20 @@ namespace Piccolo
                                             uint32_t           layout_count,
                                             uint32_t           miplevels)
     {
+        // 填写VkImageViewCreateInfo结构体
         VkImageViewCreateInfo image_view_create_info {};
         image_view_create_info.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        image_view_create_info.image                           = image;
-        image_view_create_info.viewType                        = view_type;
+        image_view_create_info.image                           = image; // 要绑定的swapchain image
+        // 用于指定图像被看作是一维纹理、二维纹理、三维纹理还是立方体贴图
+        image_view_create_info.viewType                        = view_type; // VK_IMAGE_VIEW_TYPE_2D
         image_view_create_info.format                          = format;
-        image_view_create_info.subresourceRange.aspectMask     = image_aspect_flags;
+        // subresourceRange成员变量用于指定图像的用途和图像的哪一部分可以被访问
+        // 这里，我们的图像被用作渲染目标，并且没有细分级别，只存在一个图层
+        image_view_create_info.subresourceRange.aspectMask     = image_aspect_flags; // VK_IMAGE_ASPECT_COLOR_BIT
         image_view_create_info.subresourceRange.baseMipLevel   = 0;
-        image_view_create_info.subresourceRange.levelCount     = miplevels;
+        image_view_create_info.subresourceRange.levelCount     = miplevels; // 1
         image_view_create_info.subresourceRange.baseArrayLayer = 0;
-        image_view_create_info.subresourceRange.layerCount     = layout_count;
+        image_view_create_info.subresourceRange.layerCount     = layout_count; // 1
 
         VkImageView image_view;
         if (vkCreateImageView(device, &image_view_create_info, nullptr, &image_view) != VK_SUCCESS)

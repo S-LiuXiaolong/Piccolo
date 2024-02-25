@@ -158,7 +158,7 @@ namespace Piccolo
         createSyncPrimitives();
 
         createSwapchain();
-
+        // 在initVulkan函数调用createSwapChain函数创建交换链之后调用创建交换链image views
         createSwapchainImageViews();
 
         createFramebufferImageAndView();
@@ -1131,8 +1131,9 @@ namespace Piccolo
 
     bool VulkanRHI::createGraphicsPipelines(RHIPipelineCache* pipelineCache, uint32_t createInfoCount, const RHIGraphicsPipelineCreateInfo* pCreateInfo, RHIPipeline* &pPipelines)
     {
-        //pipeline_shader_stage_create_info
-        int pipeline_shader_stage_create_info_size = pCreateInfo->stageCount;
+        // pipeline_shader_stage_create_info
+        // 需要指定着色器在管线处理哪一阶段被使用。指定着色器阶段需要使用VkPipelineShaderStageCreateInfo结构体
+        int pipeline_shader_stage_create_info_size = pCreateInfo->stageCount; // 管线的阶段数
         std::vector<VkPipelineShaderStageCreateInfo> vk_pipeline_shader_stage_create_info_list(pipeline_shader_stage_create_info_size);
 
         int specialization_map_entry_size_total = 0;
@@ -1151,9 +1152,11 @@ namespace Piccolo
         int specialization_map_entry_current = 0;
         int specialization_info_current = 0;
 
+        // 循环每一个VkPipelineShaderStageCreateInfo的vector中的值
         for (int i = 0; i < pipeline_shader_stage_create_info_size; ++i)
         {
-            const auto& rhi_pipeline_shader_stage_create_info_element = pCreateInfo->pStages[i];
+            const auto& rhi_pipeline_shader_stage_create_info_element = pCreateInfo->pStages[i]; // pipeline create info的stage
+            // vk_pipeline_shader_stage_create_info_element即为每一个VkPipelineShaderStageCreateInfo的具体值
             auto& vk_pipeline_shader_stage_create_info_element = vk_pipeline_shader_stage_create_info_list[i];
 
             if (rhi_pipeline_shader_stage_create_info_element.pSpecializationInfo != nullptr)
@@ -1185,6 +1188,7 @@ namespace Piccolo
             {
                 vk_pipeline_shader_stage_create_info_element.pSpecializationInfo = nullptr;
             }
+            // 填写shader stage的基本信息
             vk_pipeline_shader_stage_create_info_element.sType = (VkStructureType)rhi_pipeline_shader_stage_create_info_element.sType;
             vk_pipeline_shader_stage_create_info_element.pNext = (const void*)rhi_pipeline_shader_stage_create_info_element.pNext;
             vk_pipeline_shader_stage_create_info_element.flags = (VkPipelineShaderStageCreateFlags)rhi_pipeline_shader_stage_create_info_element.flags;
@@ -1227,15 +1231,22 @@ namespace Piccolo
             vk_vertex_input_attribute_description_element.offset = rhi_vertex_input_attribute_description_element.offset;
         };
 
+        // 顶点输入
+        // 使用VkPipelineVertexInputStateCreateInfo结构体来描述传递给顶点着色器的顶点数据格式，主要包括
+        // 绑定：数据之间的间距和数据是按逐顶点的方式还是按逐实例的方式进行组织
+        // 属性描述：传递给顶点着色器的属性类型，用于将属性绑定到顶点着色器中的变量
         VkPipelineVertexInputStateCreateInfo vk_pipeline_vertex_input_state_create_info{};
         vk_pipeline_vertex_input_state_create_info.sType = (VkStructureType)pCreateInfo->pVertexInputState->sType;
         vk_pipeline_vertex_input_state_create_info.pNext = (const void*)pCreateInfo->pVertexInputState->pNext;
         vk_pipeline_vertex_input_state_create_info.flags = (VkPipelineVertexInputStateCreateFlags)pCreateInfo->pVertexInputState->flags;
+        // pVertexBindingDescriptions和pVertexAttributeDescriptions成员变量用于指向描述顶点数据组织信息的结构体数组
         vk_pipeline_vertex_input_state_create_info.vertexBindingDescriptionCount = pCreateInfo->pVertexInputState->vertexBindingDescriptionCount;
         vk_pipeline_vertex_input_state_create_info.pVertexBindingDescriptions = vk_vertex_input_binding_description_list.data();
         vk_pipeline_vertex_input_state_create_info.vertexAttributeDescriptionCount = pCreateInfo->pVertexInputState->vertexAttributeDescriptionCount;
         vk_pipeline_vertex_input_state_create_info.pVertexAttributeDescriptions = vk_vertex_input_attribute_description_list.data();
-
+        
+        // 输入装配
+        // VkPipelineInputAssemblyStateCreateInfo结构体用于描述两个信息：顶点数据定义了哪种类型的几何图元，以及是否启用几何图元重启
         VkPipelineInputAssemblyStateCreateInfo vk_pipeline_input_assembly_state_create_info{};
         vk_pipeline_input_assembly_state_create_info.sType = (VkStructureType)pCreateInfo->pInputAssemblyState->sType;
         vk_pipeline_input_assembly_state_create_info.pNext = (const void*)pCreateInfo->pInputAssemblyState->pNext;
@@ -1255,7 +1266,7 @@ namespace Piccolo
             vk_pipeline_tessellation_state_create_info_ptr = &vk_pipeline_tessellation_state_create_info;
         }
 
-        //viewport
+        //viewport 视口
         int viewport_size = pCreateInfo->pViewportState->viewportCount;
         std::vector<VkViewport> vk_viewport_list(viewport_size);
         for (int i = 0; i < viewport_size; ++i)
@@ -1265,13 +1276,15 @@ namespace Piccolo
 
             vk_viewport_element.x = rhi_viewport_element.x;
             vk_viewport_element.y = rhi_viewport_element.y;
+            // main_camera_pass中的所有视口大小都为交换链图像的大小
             vk_viewport_element.width = rhi_viewport_element.width;
             vk_viewport_element.height = rhi_viewport_element.height;
+            // minDepth和maxDepth成员变量用于指定帧缓冲使用的深度值的范围，一般将它们的值分别设置为0.0f和1.0f
             vk_viewport_element.minDepth = rhi_viewport_element.minDepth;
             vk_viewport_element.maxDepth = rhi_viewport_element.maxDepth;
         };
-
-        //rect_2d
+        
+        //rect_2d 用于裁剪的范围
         int rect_2d_size = pCreateInfo->pViewportState->scissorCount;
         std::vector<VkRect2D> vk_rect_2d_list(rect_2d_size);
         for (int i = 0; i < rect_2d_size; ++i)
@@ -1291,6 +1304,8 @@ namespace Piccolo
             vk_rect_2d_element.extent = extend2d;
         };
 
+        // 视口和裁剪矩形需要组合在一起，通过VkPipelineViewportStateCreateInfo结构体指定。许多显卡可以使用多个视口和裁剪矩形，
+        // 所以指定视口和裁剪矩形的成员变量是一个指向视口和裁剪矩形的结构体数组指针
         VkPipelineViewportStateCreateInfo vk_pipeline_viewport_state_create_info{};
         vk_pipeline_viewport_state_create_info.sType = (VkStructureType)pCreateInfo->pViewportState->sType;
         vk_pipeline_viewport_state_create_info.pNext = (const void*)pCreateInfo->pViewportState->pNext;
@@ -1300,21 +1315,31 @@ namespace Piccolo
         vk_pipeline_viewport_state_create_info.scissorCount = pCreateInfo->pViewportState->scissorCount;
         vk_pipeline_viewport_state_create_info.pScissors = vk_rect_2d_list.data();
 
+        // 光栅化：光栅化程序将来自顶点着色器的顶点构成的几何图元转换为片段交由片段着色器着色
+        // 深度测试，背面剔除和裁剪测试也由光栅化程序执行。我们可以配置光栅化程序输出整个几何图元作为片段，还是只输出几何图元的边作为片段(也就是线框模式)
         VkPipelineRasterizationStateCreateInfo vk_pipeline_rasterization_state_create_info{};
         vk_pipeline_rasterization_state_create_info.sType = (VkStructureType)pCreateInfo->pRasterizationState->sType;
         vk_pipeline_rasterization_state_create_info.pNext = (const void*)pCreateInfo->pRasterizationState->pNext;
         vk_pipeline_rasterization_state_create_info.flags = (VkPipelineRasterizationStateCreateFlags)pCreateInfo->pRasterizationState->flags;
+        // depthClampEnable成员变量设置为VK_TRUE表示在近平面和远平面外的片段会被截断为在近平面和远平面上，而不是直接丢弃这些片段。这对于阴影贴图的生成很有用
         vk_pipeline_rasterization_state_create_info.depthClampEnable = (VkBool32)pCreateInfo->pRasterizationState->depthClampEnable;
+        // rasterizerDiscardEnable成员变量设置为VK_TRUE表示所有几何图元都不能通过光栅化阶段。这一设置会禁止一切片段输出到帧缓冲
         vk_pipeline_rasterization_state_create_info.rasterizerDiscardEnable = (VkBool32)pCreateInfo->pRasterizationState->rasterizerDiscardEnable;
+        // polygonMode成员变量用于指定几何图元生成片段的方式：VK_POLYGON_MODE_FILL/VK_POLYGON_MODE_LINE/VK_POLYGON_MODE_POINT
         vk_pipeline_rasterization_state_create_info.polygonMode = (VkPolygonMode)pCreateInfo->pRasterizationState->polygonMode;
+        // cullMode成员变量用于指定使用的表面剔除类型。我们可以通过它禁用表面剔除，剔除背面，剔除正面，以及剔除双面
         vk_pipeline_rasterization_state_create_info.cullMode = (VkCullModeFlags)pCreateInfo->pRasterizationState->cullMode;
+        // frontFace成员变量用于指定顺时针的顶点序是正面，还是逆时针的顶点序是正面
         vk_pipeline_rasterization_state_create_info.frontFace = (VkFrontFace)pCreateInfo->pRasterizationState->frontFace;
+        // 光栅化程序可以通过添加常量值或根据片段的斜率来改变深度值。有时用于阴影贴图
         vk_pipeline_rasterization_state_create_info.depthBiasEnable = (VkBool32)pCreateInfo->pRasterizationState->depthBiasEnable;
         vk_pipeline_rasterization_state_create_info.depthBiasConstantFactor = pCreateInfo->pRasterizationState->depthBiasConstantFactor;
         vk_pipeline_rasterization_state_create_info.depthBiasClamp = pCreateInfo->pRasterizationState->depthBiasClamp;
         vk_pipeline_rasterization_state_create_info.depthBiasSlopeFactor = pCreateInfo->pRasterizationState->depthBiasSlopeFactor;
+        // lineWidth成员变量用于指定光栅化后的线段宽度，它以线宽所占的片段数目为单位
         vk_pipeline_rasterization_state_create_info.lineWidth = pCreateInfo->pRasterizationState->lineWidth;
 
+        // 多重采样
         VkPipelineMultisampleStateCreateInfo vk_pipeline_multisample_state_create_info{};
         vk_pipeline_multisample_state_create_info.sType = (VkStructureType)pCreateInfo->pMultisampleState->sType;
         vk_pipeline_multisample_state_create_info.pNext = (const void*)pCreateInfo->pMultisampleState->pNext;
@@ -1344,7 +1369,7 @@ namespace Piccolo
         stencil_op_state_back.writeMask = pCreateInfo->pDepthStencilState->back.writeMask;
         stencil_op_state_back.reference = pCreateInfo->pDepthStencilState->back.reference;
 
-
+        // 深度和模板测试
         VkPipelineDepthStencilStateCreateInfo vk_pipeline_depth_stencil_state_create_info{};
         vk_pipeline_depth_stencil_state_create_info.sType = (VkStructureType)pCreateInfo->pDepthStencilState->sType;
         vk_pipeline_depth_stencil_state_create_info.pNext = (const void*)pCreateInfo->pDepthStencilState->pNext;
@@ -1360,13 +1385,33 @@ namespace Piccolo
         vk_pipeline_depth_stencil_state_create_info.maxDepthBounds = pCreateInfo->pDepthStencilState->maxDepthBounds;
 
         //pipeline_color_blend_attachment_state
+        // 片段着色器返回的片段颜色需要和原来帧缓冲中对应像素的颜色进行混合。混合的方式有下面两种：
+        // 混合旧值和新值产生最终的颜色
+        // 使用位运算组合旧值和新值
+        /*
+            // 第一类混合方式的运算过程类似下面的代码
+            if (blendEnable)
+            {
+                finalColor.rgb = (srcColorBlendFactor * newColor.rgb)<colorBlendOp>(dstColorBlendFactor * oldColor.rgb);
+                finalColor.a   = (srcAlphaBlendFactor * newColor.a)<alphaBlendOp>(dstAlphaBlendFactor * oldColor.a);
+            }
+            else
+            {
+                finalColor = newColor;
+            }
+
+            finalColor = finalColor & colorWriteMask;
+        */
         int pipeline_color_blend_attachment_state_size = pCreateInfo->pColorBlendState->attachmentCount;
+        // VkPipelineColorBlendAttachmentState结构体，可以用它来对每个绑定的帧缓冲进行单独的颜色混合配置
         std::vector<VkPipelineColorBlendAttachmentState> vk_pipeline_color_blend_attachment_state_list(pipeline_color_blend_attachment_state_size);
         for (int i = 0; i < pipeline_color_blend_attachment_state_size; ++i)
         {
             const auto& rhi_pipeline_color_blend_attachment_state_element = pCreateInfo->pColorBlendState->pAttachments[i];
             auto& vk_pipeline_color_blend_attachment_state_element = vk_pipeline_color_blend_attachment_state_list[i];
 
+            // 如果blendEnable成员变量被设置为VK_FALSE，就不会进行混合操作。否则，就会执行指定的混合操作计算新的颜色值。
+            // 计算出的新的颜色值会按照colorWriteMask的设置决定写入到帧缓冲的颜色通道
             vk_pipeline_color_blend_attachment_state_element.blendEnable = (VkBool32)rhi_pipeline_color_blend_attachment_state_element.blendEnable;
             vk_pipeline_color_blend_attachment_state_element.srcColorBlendFactor = (VkBlendFactor)rhi_pipeline_color_blend_attachment_state_element.srcColorBlendFactor;
             vk_pipeline_color_blend_attachment_state_element.dstColorBlendFactor = (VkBlendFactor)rhi_pipeline_color_blend_attachment_state_element.dstColorBlendFactor;
@@ -1375,8 +1420,22 @@ namespace Piccolo
             vk_pipeline_color_blend_attachment_state_element.dstAlphaBlendFactor = (VkBlendFactor)rhi_pipeline_color_blend_attachment_state_element.dstAlphaBlendFactor;
             vk_pipeline_color_blend_attachment_state_element.alphaBlendOp = (VkBlendOp)rhi_pipeline_color_blend_attachment_state_element.alphaBlendOp;
             vk_pipeline_color_blend_attachment_state_element.colorWriteMask = (VkColorComponentFlags)rhi_pipeline_color_blend_attachment_state_element.colorWriteMask;
+            /*
+                // 例如实现半透明效果
+                finalColor.rgb = newAlpha * newColor + (1 - newAlpha) * oldColor;
+                finalColor.a = newAlpha.a;
+
+                colorBlendAttachment.blendEnable = VK_TRUE;
+                colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+                colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+                colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+                colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+                colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+            */
         };
 
+        // VkPipelineColorBlendStateCreateInfo结构体，可以用它来进行全局的颜色混合配置
         VkPipelineColorBlendStateCreateInfo vk_pipeline_color_blend_state_create_info{};
         vk_pipeline_color_blend_state_create_info.sType = (VkStructureType)pCreateInfo->pColorBlendState->sType;
         vk_pipeline_color_blend_state_create_info.pNext = pCreateInfo->pColorBlendState->pNext;
@@ -1390,7 +1449,9 @@ namespace Piccolo
             vk_pipeline_color_blend_state_create_info.blendConstants[i] = pCreateInfo->pColorBlendState->blendConstants[i];
         };
 
-        //dynamic_state
+        // dynamic_state
+        // 只有非常有限的管线状态可以在不重建管线的情况下进行动态修改。这包括视口大小，线宽和混合常量。
+        // 我们可以通过填写VkPipelineDynamicStateCreateInfo结构体指定需要动态修改的状态
         int dynamic_state_size = pCreateInfo->pDynamicState->dynamicStateCount;
         std::vector<VkDynamicState> vk_dynamic_state_list(dynamic_state_size);
         for (int i = 0; i < dynamic_state_size; ++i)
@@ -1423,7 +1484,9 @@ namespace Piccolo
         create_info.pDepthStencilState = &vk_pipeline_depth_stencil_state_create_info;
         create_info.pColorBlendState = &vk_pipeline_color_blend_state_create_info;
         create_info.pDynamicState = &vk_pipeline_dynamic_state_create_info;
-        create_info.layout = ((VulkanPipelineLayout*)pCreateInfo->layout)->getResource();
+        // 在着色器中使用uniform变量，它可以在管线建立后动态地被应用程序修改，实现对着色器进行一定程度的动态配置
+        // 我们在着色器中使用的uniform变量需要在管线创建时使用VkPipelineLayout对象定义
+        create_info.layout = ((VulkanPipelineLayout*)pCreateInfo->layout)->getResource(); // 管线布局，在各个pass中create
         create_info.renderPass = ((VulkanRenderPass*)pCreateInfo->renderPass)->getResource();
         create_info.subpass = pCreateInfo->subpass;
         if (pCreateInfo->basePipelineHandle != nullptr)
@@ -2819,15 +2882,19 @@ namespace Piccolo
         }
     }
 
+    // 创建着色器模块 要将着色器字节码在管线上使用，还需要使用VkShaderModule对象
+    // 着色器模块对象只在管线创建时需要，所以，不需要将它定义为一个成员变量，而将它作为一个局部变量定义在各个pass的setupPipelines函数中
+    // 这里利用shader生成的.h文件创建shader module，shader_code变量即为.h文件内容
     RHIShader* VulkanRHI::createShaderModule(const std::vector<unsigned char>& shader_code)
     {
-        RHIShader* shahder = new VulkanShader();
+        RHIShader* shader = new VulkanShader();
 
         VkShaderModule vk_shader =  VulkanUtil::createShaderModule(m_device, shader_code);
 
-        ((VulkanShader*)shahder)->setResource(vk_shader);
+        // VulkanShader主要的资产就是VkShaderModule
+        ((VulkanShader*)shader)->setResource(vk_shader);
 
-        return shahder;
+        return shader;
     }
 
     void VulkanRHI::createBuffer(RHIDeviceSize size, RHIBufferUsageFlags usage, RHIMemoryPropertyFlags properties, RHIBuffer* & buffer, RHIDeviceMemory* & buffer_memory)
@@ -2994,8 +3061,14 @@ namespace Piccolo
         ((VulkanImageView*)image_view)->setResource(vk_image_view);
     }
 
+    // 使用任何VkImage对象，包括处于交换链中的，处于渲染管线中的，都需要我们创建一个VkImageView对象来绑定访问它。
+    // 图像视图描述了访问图像的方式，以及图像的哪一部分可以被访问。
+    // 比如，图像可以被图像视图描述为一个没有细化级别的二维深度纹理，进而可以在其上进行与二维深度纹理相关的操作。
+    // 
+    // 用于为交换链中的每一个图像建立图像视图
     void VulkanRHI::createSwapchainImageViews()
     {
+        // 在createSwapChain()中m_swapchain_images的size得以确定，imageviews和images拥有相同的大小
         m_swapchain_imageviews.resize(m_swapchain_images.size());
 
         // create imageview (one for each this time) for all swapchain images
@@ -3010,7 +3083,10 @@ namespace Piccolo
                                                                    1,
                                                                    1);
             m_swapchain_imageviews[i] = new VulkanImageView();
-            ((VulkanImageView*)m_swapchain_imageviews[i])->setResource(vk_image_view);
+            // ((VulkanImageView*)m_swapchain_imageviews[i])->setResource(vk_image_view);
+            static_cast<VulkanImageView*>(m_swapchain_imageviews[i])->setResource(vk_image_view);
+            // 没有虚函数你写个几把的动态cast
+            // dynamic_cast<VulkanImageView*>(m_swapchain_imageviews[i])->setResource(vk_image_view); // 完全错误
         }
     }
 

@@ -28,6 +28,8 @@ endif()
 
 include(${PICCOLO_ROOT_DIR}/cmake/ShaderCompile.cmake)
 
+# compile_shader is a function from ShaderCompile.cmake
+# use glslangValidator.exe (on Windows) as glslangValidator_executable
 compile_shader(
   "${SHADER_FILES}"
   "${TARGET_NAME}"

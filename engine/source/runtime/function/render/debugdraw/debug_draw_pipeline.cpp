@@ -167,6 +167,7 @@ namespace Piccolo
         RHIShader* vert_shader_module = m_rhi->createShaderModule(DEBUGDRAW_VERT);
         RHIShader* frag_shader_module = m_rhi->createShaderModule(DEBUGDRAW_FRAG);
 
+        // 实际上取代了VkPipelineShaderStageCreateInfo的作用
         RHIPipelineShaderStageCreateInfo vert_pipeline_shader_stage_create_info{};
         vert_pipeline_shader_stage_create_info.sType = RHI_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         vert_pipeline_shader_stage_create_info.stage = RHI_SHADER_STAGE_VERTEX_BIT;
@@ -259,7 +260,7 @@ namespace Piccolo
         RHIGraphicsPipelineCreateInfo pipelineInfo{};
         pipelineInfo.sType = RHI_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
         pipelineInfo.stageCount = 2;
-        pipelineInfo.pStages = shader_stages;
+        pipelineInfo.pStages = shader_stages; // shader stage用于填写着色器阶段结构体
         pipelineInfo.pVertexInputState = &vertex_input_state_create_info;
         pipelineInfo.pInputAssemblyState = &input_assembly_create_info;
         pipelineInfo.pViewportState = &viewport_state_create_info;
