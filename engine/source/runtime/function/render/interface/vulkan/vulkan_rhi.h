@@ -166,6 +166,7 @@ namespace Piccolo
         //semaphores
         RHISemaphore* &getTextureCopySemaphore(uint32_t index) override;
     public:
+        // 用一个常量来定义可以同时并行处理的帧数
         static uint8_t const k_max_frames_in_flight {3};
 
         
@@ -186,7 +187,7 @@ namespace Piccolo
 
         RHIDescriptorPool* m_descriptor_pool = new VulkanDescriptorPool();
 
-        RHICommandPool* m_rhi_command_pool; 
+        RHICommandPool* m_rhi_command_pool;  // 默认的graphics指令池
 
         RHICommandBuffer* m_command_buffers[k_max_frames_in_flight];
         RHICommandBuffer* m_current_command_buffer = new VulkanCommandBuffer();
@@ -208,6 +209,10 @@ namespace Piccolo
         VkSwapchainKHR           m_swapchain {nullptr};
         std::vector<VkImage>     m_swapchain_images;
 
+        // images are specific Vulkan resources that can be used for many purposes 
+        // (descriptors/textures, attachments, staging resources); 
+        // 
+        // attachments are descriptions of resources used during rendering
         RHIImage*        m_depth_image = new VulkanImage();
         VkDeviceMemory m_depth_image_memory {nullptr};
 
@@ -240,13 +245,20 @@ namespace Piccolo
         VkDescriptorPool m_vk_descriptor_pool;
 
         // command pool and buffers
+        // Vulkan下的指令，比如绘制指令和内存传输指令并不是直接通过函数调用执行的。
+        // 我们需要将所有要执行的操作记录在一个指令缓冲对象，然后提交给可以执行这些操作的队列才能执行。
+        // 这使得我们可以在程序初始化时就准备好所有要指定的指令序列，在渲染时直接提交执行，也使得多线程提交指令变得更加容易。
+        // 我们只需要在需要指定执行的使用，将指令缓冲对象提交给Vulkan处理接口。
         uint8_t              m_current_frame_index {0};
+        // 在创建指令缓冲对象之前，我们需要先创建指令池对象。指令池对象用于管理指令缓冲对象使用的内存，并负责指令缓冲对象的分配
         VkCommandPool        m_command_pools[k_max_frames_in_flight];
         VkCommandBuffer      m_vk_command_buffers[k_max_frames_in_flight];
+        // 使用信号量(semaphore)来对一个指令队列内的操作或多个不同指令队列的操作进行同步
+        // 为了充分利用GPU的计算资源，现在我们扩展我们的应用程序，让它可以同时渲染多帧，为每一帧创建属于它们自己的信号量
         VkSemaphore          m_image_available_for_render_semaphores[k_max_frames_in_flight];
         VkSemaphore          m_image_finished_for_presentation_semaphores[k_max_frames_in_flight];
         RHISemaphore*        m_image_available_for_texturescopy_semaphores[k_max_frames_in_flight];
-        VkFence              m_is_frame_in_flight_fences[k_max_frames_in_flight];
+        VkFence              m_is_frame_in_flight_fences[k_max_frames_in_flight]; // 使用栅栏(fence)来进行CPU和GPU之间的同步
 
         // TODO: set
         VkCommandBuffer   m_vk_current_command_buffer;

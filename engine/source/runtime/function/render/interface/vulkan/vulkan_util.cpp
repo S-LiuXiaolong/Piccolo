@@ -18,9 +18,13 @@ namespace Piccolo
                                         VkMemoryPropertyFlags properties_flag)
     {
         VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
+        // 使用vkGetPhysicalDeviceMemoryProperties函数查询物理设备可用的内存类型
+        // VkPhysicalDeviceMemoryProperties结构体包含了memoryTypes和memoryHeaps两个数组成员变量。
+        // memoryHeaps数组成员变量中的每个元素是一种内存来源，比如显存以及显存用尽后的位于主内存中的交换空间
         vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
         for (uint32_t i = 0; i < physical_device_memory_properties.memoryTypeCount; i++)
         {
+            // type_filter: VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT 用于从CPU写入数据
             if (type_filter & (1 << i) &&
                 (physical_device_memory_properties.memoryTypes[i].propertyFlags & properties_flag) == properties_flag)
             {
@@ -75,10 +79,14 @@ namespace Piccolo
         // Create the memory backing up the buffer handle
         VkPhysicalDeviceMemoryProperties deviceMemoryProperties;
         vkGetPhysicalDeviceMemoryProperties(physicalDevice, &deviceMemoryProperties);
+        // vkGetBufferMemoryRequirements函数返回的VkMemoryRequirements结构体有下面这三个成员变量：
+        // size：缓冲需要的内存的字节大小，它可能和bufferInfo.size的值不同。
+        // alignment：缓冲在实际被分配的内存中的开始位置。它的值依赖于bufferInfo.usage和bufferInfo.flags。
+        // memoryTypeBIts：指示适合该缓冲使用的内存类型的位域。
         VkMemoryRequirements memReqs;
         VkMemoryAllocateInfo memAlloc {};
         memAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        vkGetBufferMemoryRequirements(device, *buffer, &memReqs);
+        vkGetBufferMemoryRequirements(device, *buffer, &memReqs); // 获取缓冲的内存需求
         memAlloc.allocationSize = memReqs.size;
 
         // Find a memory type index that fits the properties of the buffer
@@ -100,6 +108,7 @@ namespace Piccolo
             LOG_ERROR("memTypeFound is nullptr");
             return;
         }
+        // 调用vkAllocateMemory函数分配内存
         if (VK_SUCCESS != vkAllocateMemory(device, &memAlloc, nullptr, memory))
         {
             LOG_ERROR("alloc memory failed!");
@@ -109,15 +118,18 @@ namespace Piccolo
         if (data != nullptr && datasize != 0)
         {
             void* mapped;
+            // 使用vkMapMemory函数将缓冲关联的内存映射到CPU可以访问的内存
             if (VK_SUCCESS != vkMapMemory(device, *memory, 0, size, 0, &mapped))
             {
                 LOG_ERROR("map memory failed!");
                 return;
             }
+            // 使用memcpy将顶点数据复制到映射后的内存，然后调用vkUnmapMemory函数来结束内存映射
             memcpy(mapped, data, datasize);
             vkUnmapMemory(device, *memory);
         }
 
+        // 如果内存分配成功，就可以使用vkBindBufferMemory函数将分配的内存和缓冲对象进行关联
         if (VK_SUCCESS != vkBindBufferMemory(device, *buffer, *memory, 0))
         {
             LOG_ERROR("bind memory failed!");
@@ -330,7 +342,8 @@ namespace Piccolo
                 break;
         }
 
-        // use staging buffer
+        // use staging buffer 暂存缓冲
+        // 使用CPU可见的缓冲作为临时缓冲，使用显卡读取较快的缓冲作为真正的缓冲
         VkBuffer       inefficient_staging_buffer;
         VkDeviceMemory inefficient_staging_buffer_memory;
         VulkanUtil::createBuffer(static_cast<VulkanRHI*>(rhi)->m_physical_device,

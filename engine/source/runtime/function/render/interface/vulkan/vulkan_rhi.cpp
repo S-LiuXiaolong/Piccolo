@@ -452,6 +452,9 @@ namespace Piccolo
         return false;
     }
 
+    // 从交换链获取一张图像 vkAcquireNextImageKHR
+    // 对帧缓冲附着(framebuffer attachment)执行指令缓冲中的渲染指令 vkQueueSubmit
+    // 返回渲染后的图像到交换链进行呈现操作
     void VulkanRHI::submitRendering(std::function<void()> passUpdateAfterRecreateSwapchain)
     {
         // end command buffer
@@ -466,6 +469,14 @@ namespace Piccolo
                                      m_image_finished_for_presentation_semaphores[m_current_frame_index] };
 
         // submit command buffer
+        // 我们通过VkSubmitInfo结构体来提交指令缓冲给指令队列
+        // VkSubmitInfo结构体的waitSemaphoreCount、pWaitSemaphores和pWaitDstStageMask成员变量
+        // 用于指定队列开始执行前需要等待的信号量，以及需要等待的管线阶段
+        // 
+        // 重要的是提交的数量是指在一帧中所有vkQueueSubmit调用中提交的VkSubmitInfo结构的数量，而不是vkQueueSubmit调用本身的数量。
+        // 例如当提交 10 个Command Buffer时，使用一个提交10个Command Buffer的 VkSubmitInfo比
+        // 使用10个每个有一个Command Buffer的 VkSubmitInfo 结构要有效率的多，即使在这两种情况下都是只执行一次vkQueueSubmit，
+        // 但是提交的Command数量完全不同。从本质上讲VkSubmitInfo是GPU上的一个同步/调度单元，因为它有自己的一套Fence/Semaphores
         VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         VkSubmitInfo         submit_info   = {};
         submit_info.sType                  = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -494,6 +505,8 @@ namespace Piccolo
         }
 
         // present swapchain
+        // 渲染操作执行后，我们需要将渲染的图像返回给交换链进行呈现操作。
+        // 我们在drawFrame函数的尾部通过VkPresentInfoKHR结构体来配置呈现信息
         VkPresentInfoKHR present_info   = {};
         present_info.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         present_info.waitSemaphoreCount = 1;
@@ -502,7 +515,11 @@ namespace Piccolo
         present_info.pSwapchains        = &m_swapchain;
         present_info.pImageIndices      = &m_current_swapchain_image_index;
 
+        // 根据vkAcquireNextImageKHR或vkQueuePresentKHR函数返回的信息来判定交换链是否需要重建
         VkResult present_result = vkQueuePresentKHR(m_present_queue, &present_info);
+        // 显式处理窗口大小改变（在窗口大小改变后触发VK_ERROR_OUT_OF_DATE_KHR信息）
+        // VK_ERROR_OUT_OF_DATE_KHR：交换链不能继续使用。通常发生在窗口大小改变后。
+        // VK_SUBOPTIMAL_KHR：交换链仍然可以使用，但表面属性已经不能准确匹配
         if (VK_ERROR_OUT_OF_DATE_KHR == present_result || VK_SUBOPTIMAL_KHR == present_result)
         {
             recreateSwapchain();
@@ -719,6 +736,7 @@ namespace Piccolo
 
         if (m_enable_debug_utils_label)
         {
+            // vkCmdBeginDebugUtilsLabelEXT - Open a command buffer debug label region
             _vkCmdBeginDebugUtilsLabelEXT =
                 (PFN_vkCmdBeginDebugUtilsLabelEXT)vkGetInstanceProcAddr(m_instance, "vkCmdBeginDebugUtilsLabelEXT");
             _vkCmdEndDebugUtilsLabelEXT =
@@ -728,7 +746,7 @@ namespace Piccolo
 
     void VulkanRHI::createWindowSurface()
     {
-        // 使用GLFW库的glfwCreateWindowSurface函数来完成窗口表面创建（实际上类似于在窗口上蒙上一层画布）
+        // 使用GLFW库的glfwCreateWindowSurface函数来完成窗口表面创建（window surface用于在屏幕上展示绘制内容）
         // https://zhuanlan.zhihu.com/p/56795405
         if (glfwCreateWindowSurface(m_instance, m_window, nullptr, &m_surface) != VK_SUCCESS)
         {
@@ -903,6 +921,7 @@ namespace Piccolo
             VkCommandPoolCreateInfo command_pool_create_info {};
             command_pool_create_info.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             command_pool_create_info.pNext            = NULL;
+            // VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT：command buffer对象之间相互独立，不会被一起重置。不使用这一标记，command buffer对象会被放在一起重置。
             command_pool_create_info.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             command_pool_create_info.queueFamilyIndex = m_queue_indices.graphics_family.value();
 
@@ -919,6 +938,7 @@ namespace Piccolo
             VkCommandPoolCreateInfo command_pool_create_info;
             command_pool_create_info.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             command_pool_create_info.pNext            = NULL;
+            // VK_COMMAND_POOL_CREATE_TRANSIENT_BIT：使用它分配的command buffer对象被频繁用来记录新的指令。
             command_pool_create_info.flags            = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
             command_pool_create_info.queueFamilyIndex = m_queue_indices.graphics_family.value();
 
@@ -993,6 +1013,12 @@ namespace Piccolo
         }
     }
 
+    // Vulkan的着色器数据绑定模型：
+    // 每个着色器阶段有自己独立的命名空间，片段着色器的0号纹理绑定和顶点着色器的0号纹理绑定没有任何关系。
+    // 不同类型的资源位于不同的命名空间，0号uniform缓冲绑定和0号纹理绑定没有任何关系。
+    // 资源被独立地进行绑定和解绑定。
+    //
+    // Vulkan的基本绑定单位是描述符。描述符是一个不透明的绑定表示。它可以表示一个图像、一个采样器或一个uniform缓冲等等。它甚至可以表示数组，比如一个图像数组
     bool VulkanRHI::createDescriptorSetLayout(const RHIDescriptorSetLayoutCreateInfo* pCreateInfo, RHIDescriptorSetLayout* &pSetLayout)
     {
         //descriptor_set_layout_binding
@@ -1094,6 +1120,7 @@ namespace Piccolo
         //image_view
         int image_view_size = pCreateInfo->attachmentCount;
         std::vector<VkImageView> vk_image_view_list(image_view_size);
+        // 这里将单个pass中createInfo包含的所有attachment全部存入vk_image_view_list
         for (int i = 0; i < image_view_size; ++i)
         {
             const auto& rhi_image_view_element = pCreateInfo->pAttachments[i];
@@ -1107,11 +1134,11 @@ namespace Piccolo
         create_info.pNext = (const void*)pCreateInfo->pNext;
         create_info.flags = (VkFramebufferCreateFlags)pCreateInfo->flags;
         create_info.renderPass = ((VulkanRenderPass*)pCreateInfo->renderPass)->getResource();
-        create_info.attachmentCount = pCreateInfo->attachmentCount;
-        create_info.pAttachments = vk_image_view_list.data();
+        create_info.attachmentCount = pCreateInfo->attachmentCount; // 图像视图(attachment)的数量
+        create_info.pAttachments = vk_image_view_list.data(); // 实际上存储了该交换链中所有的图像视图（数组）
         create_info.width = pCreateInfo->width;
-        create_info.height = pCreateInfo->height;
-        create_info.layers = pCreateInfo->layers;
+        create_info.height = pCreateInfo->height; // width和height成员变量用于指定帧缓冲的大小
+        create_info.layers = pCreateInfo->layers; // layers成员变量用于指定图像层数
 
         pFramebuffer = new VulkanFramebuffer();
         VkFramebuffer vk_framebuffer;
@@ -1204,7 +1231,7 @@ namespace Piccolo
             return false;
         }
 
-        //vertex_input_binding_description
+        //vertex_input_binding_description 使用VkVertexInputBindingDescription结构体来描述CPU缓冲中的顶点数据存放方式
         int vertex_input_binding_description_size = pCreateInfo->pVertexInputState->vertexBindingDescriptionCount;
         std::vector<VkVertexInputBindingDescription> vk_vertex_input_binding_description_list(vertex_input_binding_description_size);
         for (int i = 0; i < vertex_input_binding_description_size; ++i)
@@ -1217,7 +1244,7 @@ namespace Piccolo
             vk_vertex_input_binding_description_element.inputRate = (VkVertexInputRate)rhi_vertex_input_binding_description_element.inputRate;
         };
 
-        //vertex_input_attribute_description
+        //vertex_input_attribute_description 使用VkVertexInputAttributeDescription结构体来描述顶点属性
         int vertex_input_attribute_description_size = pCreateInfo->pVertexInputState->vertexAttributeDescriptionCount;
         std::vector<VkVertexInputAttributeDescription> vk_vertex_input_attribute_description_list(vertex_input_attribute_description_size);
         for (int i = 0; i < vertex_input_attribute_description_size; ++i)
@@ -1489,6 +1516,9 @@ namespace Piccolo
         create_info.layout = ((VulkanPipelineLayout*)pCreateInfo->layout)->getResource(); // 管线布局，在各个pass中create
         create_info.renderPass = ((VulkanRenderPass*)pCreateInfo->renderPass)->getResource();
         create_info.subpass = pCreateInfo->subpass;
+        // basePipelineHandle和basePipelineIndex成员变量用于以一个创建好的图形管线为基础创建一个新的图形管线
+        // 当要创建一个和已有管线大量设置相同的管线时，使用它的代价要比直接创建小
+        // 并且，对于从同一个管线衍生出的两个管线，在它们之间进行管线切换操作的效率也要高很多
         if (pCreateInfo->basePipelineHandle != nullptr)
         {
             create_info.basePipelineHandle = ((VulkanPipeline*)pCreateInfo->basePipelineHandle)->getResource();
@@ -1500,17 +1530,19 @@ namespace Piccolo
         create_info.basePipelineIndex = pCreateInfo->basePipelineIndex;
 
         pPipelines = new VulkanPipeline();
-        VkPipeline vk_pipelines;
+        VkPipeline vk_pipelines; // 创建VkPipeline成员变量用来存储创建的管线对象
+        // 通过VkPipelineCache可以将管线创建相关的数据进行缓存，在多个vkCreateGraphicsPipelines函数调用中使用，
+        // 甚至可以将缓存存入文件，在多个程序间使用。使用它可以加速之后的管线创建
         VkPipelineCache vk_pipeline_cache = VK_NULL_HANDLE;
         if (pipelineCache != nullptr)
         {
             vk_pipeline_cache = ((VulkanPipelineCache*)pipelineCache)->getResource();
         }
-        VkResult result = vkCreateGraphicsPipelines(m_device, vk_pipeline_cache, createInfoCount, &create_info, nullptr, &vk_pipelines);
-        ((VulkanPipeline*)pPipelines)->setResource(vk_pipelines);
 
-        if (result == VK_SUCCESS)
+        if (vkCreateGraphicsPipelines(
+                m_device, vk_pipeline_cache, createInfoCount, &create_info, nullptr, &vk_pipelines) == VK_SUCCESS)
         {
+            ((VulkanPipeline*)pPipelines)->setResource(vk_pipelines);
             return RHI_SUCCESS;
         }
         else
@@ -1615,6 +1647,7 @@ namespace Piccolo
     bool VulkanRHI::createRenderPass(const RHIRenderPassCreateInfo* pCreateInfo, RHIRenderPass* &pRenderPass)
     {
         // attachment convert
+        // attachmentCount: 附着数量
         std::vector<VkAttachmentDescription> vk_attachments(pCreateInfo->attachmentCount);
         for (int i = 0; i < pCreateInfo->attachmentCount; ++i)
         {
@@ -1622,17 +1655,23 @@ namespace Piccolo
             auto& vk_desc = vk_attachments[i];
 
             vk_desc.flags = (VkAttachmentDescriptionFlags)(rhi_desc).flags;
-            vk_desc.format = (VkFormat)(rhi_desc).format;
-            vk_desc.samples = (VkSampleCountFlagBits)(rhi_desc).samples;
+            vk_desc.format = (VkFormat)(rhi_desc).format; // format成员变量用于指定颜色缓冲附着的格式
+            vk_desc.samples = (VkSampleCountFlagBits)(rhi_desc).samples; // samples成员变量用于指定采样数（不使用多重采样则为1）
+            // loadOp和storeOp成员变量用于指定在渲染之前和渲染之后对附着中的数据进行的操作
             vk_desc.loadOp = (VkAttachmentLoadOp)(rhi_desc).loadOp;
-            vk_desc.storeOp = (VkAttachmentStoreOp)(rhi_desc).storeOp;
+            vk_desc.storeOp = (VkAttachmentStoreOp)(rhi_desc).storeOp; // loadOp和storeOp成员变量的设置会对颜色和深度缓冲起效
             vk_desc.stencilLoadOp = (VkAttachmentLoadOp)(rhi_desc).stencilLoadOp;
-            vk_desc.stencilStoreOp = (VkAttachmentStoreOp)(rhi_desc).stencilStoreOp;
-            vk_desc.initialLayout = (VkImageLayout)(rhi_desc).initialLayout;
-            vk_desc.finalLayout = (VkImageLayout)(rhi_desc).finalLayout;
+            vk_desc.stencilStoreOp = (VkAttachmentStoreOp)(rhi_desc).stencilStoreOp; // stencilLoadOp成员变量和stencilStoreOp成员变量会对模板缓冲起效
+            // 一些常用的图形内存布局设置：
+            // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL：图像被用作颜色附着
+            // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR：图像被用在交换链中进行呈现操作
+            // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL：图像被用作复制操作的目的图像
+            vk_desc.initialLayout = (VkImageLayout)(rhi_desc).initialLayout; // initialLayout成员变量用于指定渲染流程开始前的图像布局方式
+            vk_desc.finalLayout = (VkImageLayout)(rhi_desc).finalLayout; // finalLayout成员变量用于指定渲染流程结束后的图像布局方式
         };
 
         // subpass convert
+        // 一个render pass可以包含多个subpass。子流程依赖于上一pass处理后的帧缓冲内容。将多个子流程组成一个渲染流程后，Vulkan可以对其进行一定程度的优化。
         int totalAttachmentRefenrence = 0;
         for (int i = 0; i < pCreateInfo->subpassCount; i++)
         {
@@ -1648,7 +1687,10 @@ namespace Piccolo
                 totalAttachmentRefenrence += rhi_desc.colorAttachmentCount; // pResolveAttachments
             }
         }
+        // 使用VkSubpassDescription结构体来描述子流程
         std::vector<VkSubpassDescription> vk_subpass_description(pCreateInfo->subpassCount);
+        // Every subpass references one or more of the attachments that we've described using the structure in the previous sections
+        // These references are themselves VkAttachmentReference structs
         std::vector<VkAttachmentReference> vk_attachment_reference(totalAttachmentRefenrence);
         int currentAttachmentRefence = 0;
         for (int i = 0; i < pCreateInfo->subpassCount; ++i)
@@ -1665,10 +1707,14 @@ namespace Piccolo
             vk_desc.pInputAttachments = &vk_attachment_reference[currentAttachmentRefence];
             for (int i = 0; i < (rhi_desc).inputAttachmentCount; i++)
             {
+                // 这里设置的颜色附着在数组中的索引会被片段着色器使用，对应我们在片段着色器中使用的 layout(location = 0) out vec4 outColor语句
                 const auto& rhi_attachment_refence_input = (rhi_desc).pInputAttachments[i];
                 auto& vk_attachment_refence_input = vk_attachment_reference[currentAttachmentRefence];
 
+                // The attachment parameter specifies which attachment to reference by its index in the attachment descriptions array
                 vk_attachment_refence_input.attachment = rhi_attachment_refence_input.attachment;
+                // layout成员变量用于指定进行子流程时引用的附着使用的布局方式
+                // 推荐将layout成员变量设置为VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL，一般而言，它的性能表现最佳
                 vk_attachment_refence_input.layout = (VkImageLayout)(rhi_attachment_refence_input.layout);
 
                 currentAttachmentRefence += 1;
@@ -1723,6 +1769,9 @@ namespace Piccolo
             return false;
         }
 
+        // subpass依赖
+        // 渲染流程的子流程会自动进行图像布局变换。这一变换过程由子流程的依赖所决定。子流程的依赖包括子流程之间的内存和执行的依赖关系
+        // 子流程执行之前和子流程执行之后的操作也被算作隐含的子流程
         std::vector<VkSubpassDependency> vk_subpass_depandecy(pCreateInfo->dependencyCount);
         for (int i = 0; i < pCreateInfo->dependencyCount; ++i)
         {
@@ -1738,6 +1787,7 @@ namespace Piccolo
             vk_desc.dependencyFlags = (VkDependencyFlags)(rhi_desc).dependencyFlags;
         };
 
+        // 创建render pass对象
         VkRenderPassCreateInfo create_info{};
         create_info.sType = (VkStructureType)pCreateInfo->sType;
         create_info.pNext = (const void*)pCreateInfo->pNext;
@@ -1749,7 +1799,7 @@ namespace Piccolo
         create_info.dependencyCount = pCreateInfo->dependencyCount;
         create_info.pDependencies = vk_subpass_depandecy.data();
 
-        pRenderPass = new VulkanRenderPass();
+        pRenderPass = new VulkanRenderPass(); // VulkanRenderPass包装了VkRenderPass资产
         VkRenderPass vk_render_pass;
         VkResult result = vkCreateRenderPass(m_device, &create_info, nullptr, &vk_render_pass);
         ((VulkanRenderPass*)pRenderPass)->setResource(vk_render_pass);
@@ -1988,13 +2038,14 @@ namespace Piccolo
             vk_clear_value_element.depthStencil = vk_clear_depth_stencil_value;
 
         };
-
+        // 调用vkCmdBeginRenderPass函数可以开始一个render pass。这一函数需要我们使用VkRenderPassBeginInfo结构体来指定使用的渲染流程对象
         VkRenderPassBeginInfo vk_render_pass_begin_info{};
         vk_render_pass_begin_info.sType = (VkStructureType)pRenderPassBegin->sType;
         vk_render_pass_begin_info.pNext = pRenderPassBegin->pNext;
         vk_render_pass_begin_info.renderPass = ((VulkanRenderPass*)pRenderPassBegin->renderPass)->getResource();
         vk_render_pass_begin_info.framebuffer = ((VulkanFramebuffer*)pRenderPassBegin->framebuffer)->getResource();
-        vk_render_pass_begin_info.renderArea = rect_2d;
+        vk_render_pass_begin_info.renderArea = rect_2d; // renderArea成员变量用于指定用于渲染的区域
+        // clearValueCount和pClearValues成员变量用于指定使用VK_ATTACHMENT_LOAD_OP_CLEAR标记后，使用的清除值
         vk_render_pass_begin_info.clearValueCount = pRenderPassBegin->clearValueCount;
         vk_render_pass_begin_info.pClearValues = vk_clear_value_list.data();
 
@@ -2013,6 +2064,7 @@ namespace Piccolo
 
     void VulkanRHI::cmdBindPipelinePFN(RHICommandBuffer* commandBuffer, RHIPipelineBindPoint pipelineBindPoint, RHIPipeline* pipeline)
     {
+        // vkCmdBindPipeline函数的第二个参数用于指定管线对象是图形管线还是计算管线
         return _vkCmdBindPipeline(((VulkanCommandBuffer*)commandBuffer)->getResource(), (VkPipelineBindPoint)pipelineBindPoint, ((VulkanPipeline*)pipeline)->getResource());
     }
 
@@ -2216,6 +2268,7 @@ namespace Piccolo
             vk_clear_rect_list.data());
     }
 
+    // 记录指令到指令缓冲
     bool VulkanRHI::beginCommandBuffer(RHICommandBuffer* commandBuffer, const RHICommandBufferBeginInfo* pBeginInfo)
     {
         VkCommandBufferInheritanceInfo command_buffer_inheritance_info{};
@@ -2234,10 +2287,13 @@ namespace Piccolo
             command_buffer_inheritance_info_ptr = &command_buffer_inheritance_info;
         }
 
+        // 通过调用vkBeginCommandBuffer函数开始指令缓冲的记录操作，
+        // 这一函数以VkCommandBufferBeginInfo结构体作为参数来指定一些有关指令缓冲的使用细节
         VkCommandBufferBeginInfo command_buffer_begin_info{};
         command_buffer_begin_info.sType = (VkStructureType)pBeginInfo->sType;
         command_buffer_begin_info.pNext = (const void*)pBeginInfo->pNext;
-        command_buffer_begin_info.flags = (VkCommandBufferUsageFlags)pBeginInfo->flags;
+        command_buffer_begin_info.flags = (VkCommandBufferUsageFlags)pBeginInfo->flags; // flags成员变量用于指定我们将要怎样使用指令缓冲
+        // pInheritanceInfo成员变量只用于辅助指令缓冲，可以用它来指定从调用它的主要指令缓冲继承的状态
         command_buffer_begin_info.pInheritanceInfo = command_buffer_inheritance_info_ptr;
 
         VkResult result = vkBeginCommandBuffer(((VulkanCommandBuffer*)commandBuffer)->getResource(), &command_buffer_begin_info);
@@ -2339,8 +2395,8 @@ namespace Piccolo
             vk_write_descriptor_set_element.dstArrayElement = rhi_write_descriptor_set_element.dstArrayElement;
             vk_write_descriptor_set_element.descriptorCount = rhi_write_descriptor_set_element.descriptorCount;
             vk_write_descriptor_set_element.descriptorType = (VkDescriptorType)rhi_write_descriptor_set_element.descriptorType;
-            vk_write_descriptor_set_element.pImageInfo = vk_descriptor_image_info_ptr;
-            vk_write_descriptor_set_element.pBufferInfo = vk_descriptor_buffer_info_ptr;
+            vk_write_descriptor_set_element.pImageInfo = vk_descriptor_image_info_ptr; //
+            vk_write_descriptor_set_element.pBufferInfo = vk_descriptor_buffer_info_ptr; // 对Image和Buffer资源的实际绑定
             //vk_write_descriptor_set_element.pTexelBufferView = &((VulkanBufferView*)rhi_write_descriptor_set_element.pTexelBufferView)->getResource();
         };
 
@@ -2373,6 +2429,7 @@ namespace Piccolo
         vkUpdateDescriptorSets(m_device, descriptorWriteCount, vk_write_descriptor_set_list.data(), descriptorCopyCount, vk_copy_descriptor_set_list.data());
     }
 
+    // 提交信息给指令队列
     bool VulkanRHI::queueSubmit(RHIQueue* queue, uint32_t submitCount, const RHISubmitInfo* pSubmits, RHIFence* fence)
     {
         //submit_info
@@ -2535,6 +2592,8 @@ namespace Piccolo
     {
 
         //memory_barrier
+        // 有三种内存屏障类型：VkMemoryBarrier、VkBufferMemoryBarrier和VkImageMemoryBarrier。
+        // VkMemoryBarrier可以进行所有内存资源的同步操作，其它两种类型的内存屏障用于同步特定的内存资源
         int memory_barrier_size = memoryBarrierCount;
         std::vector<VkMemoryBarrier> vk_memory_barrier_list(memory_barrier_size);
         for (int i = 0; i < memory_barrier_size; ++i)
@@ -2712,10 +2771,14 @@ namespace Piccolo
             &copyRegion);
     }
 
+    // 分配指令缓冲 allocate a single command buffer from the command pool
     void VulkanRHI::createCommandBuffers()
     {
         VkCommandBufferAllocateInfo command_buffer_allocate_info {};
         command_buffer_allocate_info.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        // level成员变量用于指定分配的指令缓冲对象是primary还是secondary
+        // VK_COMMAND_BUFFER_LEVEL_PRIMARY：可以被提交到队列进行执行，但不能被其它指令缓冲对象调用。
+        // VK_COMMAND_BUFFER_LEVEL_SECONDARY：不能直接被提交到队列进行执行，但可以从primary command buffer调用执行。
         command_buffer_allocate_info.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         command_buffer_allocate_info.commandBufferCount = 1U;
 
@@ -2781,6 +2844,8 @@ namespace Piccolo
 
         VkFenceCreateInfo fence_create_info {};
         fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        // 栅栏(fence)对象在创建后是未发出信号的状态。这就意味着如果我们没有在vkWaitForFences函数调用之前发出栅栏(fence)信号，
+        // vkWaitForFences函数调用将会一直处于等待状态。我们可以在创建栅栏(fence)对象时，设置它的初始状态为已发出信号来解决这一问题
         fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT; // the fence is initialized as signaled
 
         for (uint32_t i = 0; i < k_max_frames_in_flight; i++)
@@ -3409,11 +3474,13 @@ namespace Piccolo
         return m_image_available_for_texturescopy_semaphores[index];
     }
 
+    // 窗口大小改变会导致交换链和窗口不再适配，需要重新对交换链进行处理
     void VulkanRHI::recreateSwapchain()
     {
         int width  = 0;
         int height = 0;
         glfwGetFramebufferSize(m_window, &width, &height);
+        // 窗口最小化
         while (width == 0 || height == 0) // minimized 0,0, pause for now
         {
             glfwGetFramebufferSize(m_window, &width, &height);

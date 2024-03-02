@@ -1541,7 +1541,7 @@ namespace Piccolo
         // this offset plus dynamic_offset should not be greater than the size of the buffer
         mesh_perframe_storage_buffer_info.offset = 0;
         // the range means the size actually used by the shader per draw call
-        mesh_perframe_storage_buffer_info.range  = sizeof(MeshPerframeStorageBufferObject);
+        mesh_perframe_storage_buffer_info.range  = sizeof(MeshPerframeStorageBufferObject); // 对应mesh.vert中的_unused_name_perframe
         mesh_perframe_storage_buffer_info.buffer = m_global_render_resource->_storage_buffer._global_upload_ringbuffer;
         assert(mesh_perframe_storage_buffer_info.range <
                m_global_render_resource->_storage_buffer._max_storage_buffer_range);
